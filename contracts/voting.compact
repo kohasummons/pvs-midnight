@@ -1,0 +1,93 @@
+pragma language_version >= 0.20;
+import CompactStandardLibrary;
+
+
+// user can vote yes or no
+export enum VoteChoice { YES, NO }
+export enum Phase { REGISTRATION, VOTING, CLOSED }
+
+export sealed ledger creator: Bytes<32>;
+export ledger proposalTitle: Maybe<Opaque<"string">>;
+export ledger proposalDescription: Maybe<Opaque<"string">>;
+
+export ledger yesVotes: Counter;
+export ledger noVotes: Counter;
+
+export ledger phase: Phase;
+export ledger voters: HistoricMerkleTree<10, Bytes<32>>;
+export ledger hasRegisteredVoters: Boolean;
+
+export ledger nullifiers: Set<Bytes<32>>;
+
+witness voterSecret(): Bytes<32>;
+witness voterCommitmentToRegister(): Bytes<32>;
+witness findVoterPath(commitment: Bytes<32>): MerkleTreePath<10, Bytes<32>>;
+
+circuit derivePublicKey(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "pvs:v3:pk:"), sk]);
+}
+
+circuit deriveNullifier(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "pvs:v3:nul:"), sk]);
+}
+
+circuit deriveCommitment(pk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "pvs:v3:vc:"), pk]);
+}
+
+
+constructor() {
+  creator = disclose(derivePublicKey(voterSecret()));
+  proposalTitle = none<Opaque<"string">>();
+  proposalDescription = none<Opaque<"string">>();
+  phase = Phase.REGISTRATION;
+  hasRegisteredVoters = false;
+}
+
+export circuit registerVoter(): [] {
+  const sk = voterSecret();
+  assert(disclose(derivePublicKey(sk) == creator), "Only creator");
+  assert(phase == Phase.REGISTRATION, "Not in registration phase");
+  voters.insert(disclose(voterCommitmentToRegister()));
+  hasRegisteredVoters = true;
+}
+
+export circuit startVoting(title: Opaque<"string">, description: Opaque<"string">): [] {
+  const sk = voterSecret();
+  assert(disclose(derivePublicKey(sk) == creator), "Only creator");
+  assert(phase == Phase.REGISTRATION, "Not in registration phase");
+  assert(hasRegisteredVoters, "No voters registered");
+  proposalTitle = some<Opaque<"string">>(disclose(title));
+  proposalDescription = some<Opaque<"string">>(disclose(description));
+  phase = Phase.VOTING;
+}
+
+
+export circuit vote(choice: VoteChoice): [] {
+  assert(phase == Phase.VOTING, "Voting not open");
+
+  const sk = voterSecret();
+  const commitment = deriveCommitment(derivePublicKey(sk));
+  const nul = deriveNullifier(sk);
+
+  const path = findVoterPath(commitment);
+  assert(voters.checkRoot(disclose(merkleTreePathRoot<10, Bytes<32>>(path))), "Not a registered voter");
+
+  assert(!nullifiers.member(disclose(nul)), "Already voted");
+  nullifiers.insert(disclose(nul));
+
+  const c = disclose(choice);
+  if (c == VoteChoice.YES) {
+    yesVotes.increment(1);
+  } else {
+    noVotes.increment(1);
+  }
+}
+
+export circuit closeVoting(): [] {
+  const sk = voterSecret();
+  assert(disclose(derivePublicKey(sk) == creator), "Only creator");
+  assert(phase == Phase.VOTING, "Voting not open");
+  phase = Phase.CLOSED;
+}
+

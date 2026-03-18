@@ -1,10 +1,10 @@
 {
-  "name": "hello-world-compact",
+  "name": "voting-compact",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "compile": "compact compile contracts/hello-world.compact contracts/managed/hello-world",
+    "compile": "compact compile contracts/voting.compact contracts/managed/voting",
     "build": "tsc",
     "deploy": "tsx src/deploy.ts",
     "cli": "tsx src/cli.ts",
@@ -33,6 +33,8 @@
     "@midnight-ntwrk/wallet-sdk-hd": "3.0.0",
     "@midnight-ntwrk/wallet-sdk-shielded": "1.0.0",
     "@midnight-ntwrk/wallet-sdk-unshielded-wallet": "1.0.0",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "chalk": "^5.6.2",
+    "dotenv": "^17.3.1"
   }
 }
