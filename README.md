@@ -1,14 +1,12 @@
-# Hello World - Midnight Compact
+# PVS — Private Voting System on Midnight
 
-A minimal Hello World smart contract for the Midnight blockchain. Deploy to Preprod and store/read messages on-chain.
-
-This project is built on the Midnight Network.
+A zero-knowledge private voting smart contract for the Midnight blockchain. Voters are registered by a creator, cast anonymous votes (YES/NO) using ZK proofs, and nullifiers prevent double-voting — all on Preprod testnet.
 
 ## Prerequisites
 
 - **Node.js v22+** (`nvm install 22`)
-- **Docker** (for proof server)
-- **Compact compiler** - See [Midnight docs](https://docs.midnight.network/) for installation
+- **Docker** (for the proof server)
+- **Compact compiler** — See [Midnight docs](https://docs.midnight.network/) for installation
 
 ## Quick Start
 
@@ -16,16 +14,16 @@ This project is built on the Midnight Network.
 # Install dependencies
 npm install
 
-# Compile the contract
+# Compile the Compact contract
 npm run compile
 
-# Start proof server (runs in background)
+# Start the proof server (Docker)
 npm run proof-server:start
 
 # Deploy to Preprod
 npm run deploy
 
-# Interact with deployed contract
+# Interact via CLI
 npm run cli
 
 # Stop proof server when done
@@ -36,30 +34,79 @@ npm run proof-server:stop
 
 ```
 ├── contracts/
-│   └── hello-world.compact    # Smart contract source
+│   ├── voting.compact             # Voting contract (Compact lang)
+│   └── hello-world.compact        # Minimal hello-world example
 ├── src/
-│   ├── deploy.ts              # Deployment script
-│   └── cli.ts                 # Interactive CLI
-├── docker-compose.yml         # Proof server config
+│   ├── deploy.ts                  # Deployment script
+│   ├── cli.ts                     # Interactive CLI (creator + voter flows)
+│   └── utils.ts                   # Wallet, providers, witnesses, helpers
+├── docker-compose.yml             # Proof server config
 └── package.json
 ```
 
-## The Contract
+## How It Works
 
-```compact
-pragma language_version >= 0.20;
+### Contract Phases
 
-import CompactStandardLibrary;
+| Phase | Description |
+|-------|-------------|
+| **REGISTRATION** | Creator registers voters by their commitment hash |
+| **VOTING** | Registered voters cast anonymous YES/NO votes via ZK proofs |
+| **CLOSED** | Creator closes the vote; results are final |
 
-export ledger message: Opaque<"string">;
+### Privacy Model
 
-export circuit storeMessage(newMessage: Opaque<"string">): [] {
-  message = disclose(newMessage);
-}
-```
+- **Voter identity** is never revealed on-chain. Votes are linked to a Merkle proof of registration, not a wallet address.
+- **Nullifiers** derived from voter secrets prevent double-voting without revealing who voted.
+- **Commitments** (`hash(hash(sk))`) are stored in a Merkle tree — only the tree root is checked during voting.
 
-- `ledger message` - Public on-chain storage for a string
-- `storeMessage` - Circuit to update the message
+### Key Circuits
+
+| Circuit | Access | Description |
+|---------|--------|-------------|
+| `registerVoter` | Creator only | Adds a voter commitment to the Merkle tree |
+| `startVoting` | Creator only | Sets proposal title/description, opens voting |
+| `vote` | Any registered voter | Casts an anonymous YES or NO vote |
+| `closeVoting` | Creator only | Closes the voting phase |
+
+## CLI
+
+The CLI auto-detects your role (creator vs voter) based on your wallet seed.
+
+**Creator menu:**
+1. Register self
+2. Register another voter (by commitment hex)
+3. Start voting (set proposal)
+4. Vote YES / NO
+5. Close voting
+6. View results
+
+**Voter menu:**
+1. Show commitment (share with creator for registration)
+2. Vote YES / NO
+3. View results
+
+## Deployment Flow
+
+1. **Compile** — Generates ZK circuits in `contracts/managed/voting/`
+2. **Start proof server** — Required for generating ZK proofs
+3. **Deploy** — Creates/restores wallet, funds via faucet, deploys contract
+4. **Interact** — Register voters, start proposals, vote, and close via CLI
+
+## Wallet & Funding
+
+- Choose to create a new wallet or restore from a hex seed
+- New wallets generate a 64-character hex seed — **save it**
+- Fund at: https://faucet.preprod.midnight.network/
+- DUST tokens are auto-registered from your tNight balance
+
+## Network
+
+Targets **Preprod** testnet:
+
+- Indexer: `https://indexer.preprod.midnight.network`
+- RPC: `https://rpc.preprod.midnight.network`
+- Faucet: https://faucet.preprod.midnight.network/
 
 ## Commands
 
@@ -67,44 +114,9 @@ export circuit storeMessage(newMessage: Opaque<"string">): [] {
 |---------|-------------|
 | `npm run compile` | Compile the Compact contract |
 | `npm run deploy` | Deploy contract to Preprod |
-| `npm run cli` | Interact with deployed contract |
+| `npm run cli` | Interactive CLI |
 | `npm run proof-server:start` | Start proof server (Docker) |
 | `npm run proof-server:stop` | Stop proof server |
-
-## Deployment Flow
-
-1. **Compile** - Generates ZK circuits in `contracts/managed/`
-2. **Start proof server** - Required for generating ZK proofs
-3. **Deploy** - Creates wallet, funds via faucet, deploys contract
-4. **Interact** - Store and read messages via CLI
-
-## Wallet & Funding
-
-During deployment:
-- Choose to create a new wallet or restore from seed
-- New wallets generate a 64-character hex seed - **save this!**
-- Fund your wallet at: https://faucet.preprod.midnight.network/
-- DUST tokens are auto-generated from your tNight balance
-
-## Deployment Output
-
-After deployment, `deployment.json` is created:
-
-```json
-{
-  "contractAddress": "abc123...",
-  "seed": "your-wallet-seed",
-  "network": "preprod",
-  "deployedAt": "2024-..."
-}
-```
-
-## Network
-
-This project targets **Preprod** testnet:
-- Indexer: `https://indexer.preprod.midnight.network`
-- RPC: `https://rpc.preprod.midnight.network`
-- Faucet: https://faucet.preprod.midnight.network/
 
 ## License
 
